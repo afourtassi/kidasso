@@ -1,0 +1,6 @@
+"0","#Generate the model and store it in ""derived"""
+"0","model = train_word2vec(""data/corpus.txt"","
+"0","                             output=""corpus.bin"", threads = 4,"
+"0","                             vectors = 100, window=20, cbow=1, min_count = 10, force= TRUE)"
+"2","Error: could not find function ""train_word2vec""
+"

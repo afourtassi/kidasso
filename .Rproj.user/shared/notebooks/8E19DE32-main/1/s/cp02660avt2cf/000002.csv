@@ -1,0 +1,25 @@
+"0","d <- read_delim(""data/associations.txt"", delim = ""\t"") "
+"2","Parsed with column specification:
+cols(
+  .default = col_character(),
+  Experimenter_Utterance_Duration = col_double(),
+  Experimenter_Utterance_Latency = col_double(),
+  Experimenter_Utterance_Intensity = col_double(),
+  Good = col_integer(),
+  UniqueWordId = col_integer(),
+  LogFreq = col_double(),
+  prodage = col_double(),
+  TopAssocn = col_double(),
+  BwdAssocn = col_double(),
+  NumAssociates = col_integer(),
+  Order = col_integer(),
+  Age = col_integer(),
+  KEEP = col_logical(),
+  Para = col_integer(),
+  Trials = col_integer(),
+  TrialsByPart = col_integer()
+)
+"
+"2","See spec(...) for full column specifications.
+"
+"0","  "

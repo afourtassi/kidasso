@@ -1,0 +1,29 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1523036974749.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "A848CFCB",
+    "lastKnownWriteTime" : 0,
+    "last_content_update" : 1523036974749,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "D8625EAD",
+        "caption" : "d_assoc_phon",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=d_assoc_phon&cache_key=D8625EAD",
+        "displayedObservations" : "374",
+        "environment" : "",
+        "object" : "d_assoc_phon",
+        "preview" : "0",
+        "totalObservations" : "374",
+        "variables" : "10"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

@@ -1,0 +1,107 @@
+"0"," library(purrr)"
+"0","  library(readr)"
+"0","  library(ggplot2)"
+"0","  library(langcog)"
+"2","
+Attaching package: ‘langcog’
+
+"
+"2","The following object is masked from ‘package:base’:
+
+    scale
+
+"
+"0","  library(boot)"
+"0","  library(dplyr)"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","  library(tidyr)"
+"0","  library(wordbankr)"
+"0","  library(directlabels)"
+"0","  library(stringr)"
+"0","  library(lmtest)"
+"2","Loading required package: zoo
+"
+"2","
+Attaching package: ‘zoo’
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    as.Date, as.Date.numeric
+
+"
+"0","  library(rwebppl)"
+"2","local webppl exists: v0.9.6 /usr/local/lib/node_modules/webppl
+"
+"0","  library(jsonlite)"
+"2","
+Attaching package: ‘jsonlite’
+
+"
+"2","The following object is masked from ‘package:purrr’:
+
+    flatten
+
+"
+"0","  library(nlme)"
+"2","
+Attaching package: ‘nlme’
+
+"
+"2","The following object is masked from ‘package:directlabels’:
+
+    gapply
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    collapse
+
+"
+"0","  library(feather)"
+"0","  library(broom)"
+"0","  library(HDInterval)"
+"0","  library(BBmisc)"
+"2","
+Attaching package: ‘BBmisc’
+
+"
+"2","The following object is masked from ‘package:nlme’:
+
+    collapse
+
+"
+"2","The following objects are masked from ‘package:dplyr’:
+
+    coalesce, collapse
+
+"
+"0","  library(wordVectors)"
+"0","  library(magrittr)"
+"2","
+Attaching package: ‘magrittr’
+
+"
+"2","The following object is masked from ‘package:tidyr’:
+
+    extract
+
+"
+"2","The following object is masked from ‘package:purrr’:
+
+    set_names
+
+"

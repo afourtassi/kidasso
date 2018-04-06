@@ -1,0 +1,4 @@
+"0","##Things to do probably:"
+"0","# 1) Why is the adult similarity almost as low as the younger children? For example, we can  select the words that have the lowest edit distance (say, d<4) in both Younger and adults and see if they are similar? "
+"0","# 2) Also probably break things out by lexical category, e.g., content wrods (nouns, verbs, adjectivees) vs. function words (preposition, ...)"
+"0","# 3) How does phonetic similarity behave when we control for semantic similarity? ("
