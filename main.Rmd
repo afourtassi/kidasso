@@ -67,7 +67,9 @@ convert <- function(str, combined) {
 
 ```
 
-Here the main analyses
+Here make a dataframe wich includes all the measures
+
+We start with the phonetic distance (edit distance)
 
 ```{r}
 #For each word, list all other the words that have been mentioned 
@@ -77,7 +79,7 @@ Here the main analyses
 dict <- read_delim("data/cmu_dict.txt", delim = ",") 
 
 d_assoc <- d %>%
-  dplyr::group_by(Experimenter_Word, Age2, Child_Word) %>%
+  dplyr::group_by(Experimenter_Word, partofspeech, ResponseType,  Age2, Child_Word) %>%
   dplyr::summarise(n=n()) %>%
   dplyr::mutate(percent = 100*n/sum(n)) %>%
   dplyr::filter(percent == max(percent)) 
@@ -110,78 +112,23 @@ d_assoc_phon <- d_assoc %>%
     ) %>%
   mutate(Phon_dist = adist(Exp_code, Child_code))
 
-
 ```
 
-Here we reproduce the development of paradigmatic vs. syntagmatic as in Erica's previous research
-
-```{r}
-d_age <- d %>%
-  group_by(Age2) %>%
-  summarise(mean = mean(Para),
-            sd = sd(Para),
-                   n0 = n()) %>%
-  mutate(se = sd / sqrt(n0),
-         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
-         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se)
-  
-#d_age$Age2 = factor(d_age$Age2, levels = c("Younger", "Older", "Adult"))`
-
-ggplot(d_age, aes(x=Age2, y=mean))+
-  geom_pointrange(aes(ymin = lower, ymax = upper), 
-                  position = position_dodge(width = .1)) 
-
-```
-
-Here the development in terms of reliance on phonetic distance 
-
-I should filter the words for both adults and children
-```{r}
-
-word_excl <- (d_assoc_phon %>%
-  filter(is.na(Child_Word_phon) | Phon_dist =="0") %>%
-  distinct(Experimenter_Word))$Experimenter_Word
-
-phon_plot <- d_assoc_phon %>%
-  filter(!(Experimenter_Word %in% word_excl)) %>%
-  group_by(Age2) %>%
-  summarise(mean = mean(Phon_dist),
-            sd = sd(Phon_dist),
-                   n0 = n()) %>%
-  mutate(se = sd / sqrt(n0),
-         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
-         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) #%>%
-  #select(-sd, -n0, -se)
-
-phon_plot$Age2 = factor(phon_plot$Age2, levels = c("Younger", "Older", "Adult"))
-
-ggplot(phon_plot, aes(x=Age2, y=mean))+
-  geom_pointrange(aes(ymin = lower, ymax = upper), 
-                  position = position_dodge(width = .1)) 
-
-##Things to do probably:
-
-# 1) Why is the adult similarity almost as low as the younger children? For example, we can  select the words that have the lowest edit distance (say, d<4) in both Younger and adults and see if they are similar? 
-
-# 2) Also probably break things out by lexical category, e.g., content wrods (nouns, verbs, adjectivees) vs. function words (preposition, ...)
-
-
-```
-
-Now work with semantic similarity from CHILDES 
+Now add the semantic distance and combine all in one dataframe
 
 ```{r}
 
 #Generate the model and store it in "derived"
-model = train_word2vec("data/corpus.txt",
-                             output="corpus.bin", threads = 4,
-                             vectors = 100, window=20, cbow=1, min_count = 10, force= TRUE)
+
+##Uncomment the following code to re-run the Word2Vec model
+
+#model = train_word2vec("data/corpus.txt",
+#                            output="corpus.bin", threads = 4,
+#                             vectors = 100, window=20, cbow=1, min_count = 10, force= TRUE)
 
 #Read the model 
 model = read.vectors("derived/corpus.bin")
-```
 
-```{r}
 
 Child_words <- (d %>%
   distinct(Child_Word))$Child_Word
@@ -203,18 +150,121 @@ pairs <- na.omit(data.frame(as.table(cosSim))) %>%
 
 d_assoc_sem <- d_assoc_phon %>%
   left_join(pairs)
+
+d_assoc_all <- d_assoc_sem
+
+```
+
+
+Here we reproduce the development of paradigmatic vs. syntagmatic as in Erica's previous research
+
+```{r}
+d_age <- d %>%
+  group_by(Age2) %>%
+  summarise(mean = mean(Para),
+            sd = sd(Para),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se)
   
+#d_age$Age2 = factor(d_age$Age2, levels = c("Younger", "Older", "Adult"))`
+
+ggplot(d_age, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1)) 
+
+```
+
+Here compute the entropy with age 
+
+```{r}
+#Here do the entropy measure 
+```
+
+
+Here the development in terms of reliance on phonetic distance 
+```{r}
+
+#We study only associations for which answer is available across development (for Younger, Older and Adults)
+#We also eliminate words where children just repeat the cue (e.g., apple -> apple), that with edit distance =0
+word_excl <- (d_assoc_all %>%
+  filter(is.na(Child_Word_phon) | is.na(Child_Word) | Phon_dist =="0") %>%
+  #filter(is.na(Child_Word_phon) | Phon_dist =="0") %>%
+  distinct(Experimenter_Word))$Experimenter_Word
+
+##Here average the edit distance 
+phonDist_all <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2) %>%
+  summarise(mean = mean(Phon_dist),
+            sd = sd(Phon_dist),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+phonDist_all$Age2 = factor(phonDist_all$Age2, levels = c("Younger", "Older", "Adult"))
+
+ggplot(phonDist_all, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1))
+ 
+
+##Here narrow down on the small distances 
+
+##Histogram
+phonDist_small <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2, Phon_dist) %>%
+  summarise(n0 = n()) 
+
+##ALL
+ggplot(phonDist_small, aes(x=Phon_dist, y=n0))+
+  geom_col()+
+  facet_grid(. ~ Age2)
+
+##Only minimal pairs
+ggplot(subset(phonDist_small, Phon_dist==1), aes(x=Age2, y=n0))+
+  geom_col()
+```
+
+Correlation between phonetic and semantic distance
+```{r}
+
+##Here show the correlation between phonetinc and semantic distance 
+phon_sem_dist <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) #%>%
+  #group_by(Age2, Phon_dist) %>%
+  #summarise(semDsit = mean(CosSim)) 
+
+#ggplot(subset(phon_sem_dist, Phon_dist < 5), aes(x=Phon_dist, y=CosSim))+
+ggplot(phon_sem_dist, aes(x=Phon_dist, y=CosSim))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  #geom_smooth()+
+  facet_grid(. ~ Age2)
+
+
+fit <- lm(CosSim~Phon_dist, data= subset(phon_sem_dist, Age2=='Older'))
+summary(fit)
+
 
 
 ```
 
+Now study the semantic distance 
 ```{r}
 
-word_excl <- (d_assoc_sem %>%
+
+word_excl <- (d_assoc_all %>%
   filter(is.na(CosSim) | Phon_dist =="0") %>%
+  #filter(is.na(Child_Word_phon) | Phon_dist =="0") %>%
   distinct(Experimenter_Word))$Experimenter_Word
 
-sem_plot <- d_assoc_sem %>%
+
+sem_all <- d_assoc_all %>%
   filter(!(Experimenter_Word %in% word_excl)) %>%
   group_by(Age2) %>%
   summarise(mean = mean(CosSim),
@@ -222,14 +272,38 @@ sem_plot <- d_assoc_sem %>%
                    n0 = n()) %>%
   mutate(se = sd / sqrt(n0),
          lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
-         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) #%>%
-  #select(-sd, -n0, -se)
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
 
-sem_plot$Age2 = factor(sem_plot$Age2, levels = c("Younger", "Older", "Adult"))
+sem_all$Age2 = factor(sem_all$Age2, levels = c("Younger", "Older", "Adult"))
 
-ggplot(sem_plot, aes(x=Age2, y=mean))+
+ggplot(sem_all, aes(x=Age2, y=mean))+
   geom_pointrange(aes(ymin = lower, ymax = upper), 
                   position = position_dodge(width = .1)) 
+
+
+##Break by part of speach 
+
+sem_pos <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2, partofspeech) %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+sem_pos$Age2 = factor(sem_pos$Age2, levels = c("Younger", "Older", "Adult"))
+
+ggplot(sem_pos, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1))+
+  facet_grid(. ~ partofspeech)
+
+
+
 
 ```
 
