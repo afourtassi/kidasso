@@ -1,0 +1,309 @@
+---
+title: "conceptNet"
+date: "2/15/2018"
+output: html_document
+---
+
+Libraries
+```{r setup, include=FALSE}
+ library(purrr)
+  library(readr)
+  library(ggplot2)
+  library(langcog)
+  library(boot)
+  library(dplyr)
+  library(tidyr)
+  library(wordbankr)
+  library(directlabels)
+  library(stringr)
+  library(lmtest)
+  library(rwebppl)
+  library(jsonlite)
+  library(nlme)
+  library(feather)
+  library(broom)
+  library(HDInterval)
+  library(BBmisc)
+  library(wordVectors)
+  library(magrittr)
+```
+
+Data
+
+```{r}
+
+d <- read_delim("data/associations.txt", delim = "\t") 
+  
+```
+
+This function is used to recode symbols in cmu phonetic dictionary in with a unique character (easier to compute Edit distance) 
+```{r}
+
+#Read in phones and the corresponding set of characters
+
+characters <- read_delim("data/symbolsToChar.txt", delim = "\t", col_names = FALSE) 
+phones <- read_delim("data/cmu_symbols.txt", delim = "\t", col_names = FALSE)
+phon_dict <- bind_cols(phones, characters)
+
+#Converts string to its representation using the symbols
+convert <- function(str, combined) {
+    if (typeof(str) != "character" && class(str) != "factor") 
+        stop(sprintf("Illegal data type: %s", typeof(str)))
+    if (class(str) == "factor") 
+        str = as.character(str)
+    if (length(str) == 0)
+        return(integer(0))
+    splitstring = strsplit(str, split=" ")
+    result_string = ""
+    for (i in splitstring) {
+      for (j in i) {
+        filtered <- filter(combined, X1 == j)
+        converted <- select(filtered, X11)
+        result_string <- paste(result_string, converted)
+      }
+    }
+    return(result_string)
+}
+
+```
+
+Here make a dataframe wich includes all the measures
+
+We start with the phonetic distance (edit distance)
+
+```{r}
+#For each word, list all other the words that have been mentioned 
+
+#I should calculate the most frequent response and the percentage from 
+
+dict <- read_delim("data/cmu_dict.txt", delim = ",") 
+
+d_assoc <- d %>%
+  dplyr::group_by(Experimenter_Word, partofspeech, ResponseType,  Age2, Child_Word) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(percent = 100*n/sum(n)) %>%
+  dplyr::filter(percent == max(percent)) 
+
+Exp_words <- d_assoc %>%
+  ungroup() %>%
+  select(Experimenter_Word) %>%
+  distinct() %>%
+  mutate(Word = toupper(Experimenter_Word)) %>%
+  left_join(dict) %>%
+  select(-Word) %>%
+  rename(Experimenter_Word_phon = Phonetic)
+
+Chi_words <- d_assoc %>%
+  ungroup() %>%
+  select(Child_Word) %>%
+  distinct() %>%
+  mutate(Word = toupper(Child_Word)) %>%
+  left_join(dict) %>%
+  select(-Word) %>%
+  rename(Child_Word_phon = Phonetic)
+  
+d_assoc_phon <- d_assoc %>%
+  left_join(Exp_words) %>%
+  left_join(Chi_words) %>%
+  rowwise() %>%
+  mutate(
+    Exp_code = convert(Experimenter_Word_phon, phon_dict), 
+    Child_code = convert(Child_Word_phon, phon_dict)
+    ) %>%
+  mutate(Phon_dist = adist(Exp_code, Child_code))
+
+```
+
+Now add the semantic distance and combine all in one dataframe
+
+```{r}
+
+#Generate the model and store it in "derived"
+
+##Uncomment the following code to re-run the Word2Vec model
+
+#model = train_word2vec("data/corpus.txt",
+#                            output="corpus.bin", threads = 4,
+#                             vectors = 100, window=20, cbow=1, min_count = 10, force= TRUE)
+
+#Read the model 
+model = read.vectors("derived/corpus.bin")
+
+
+Child_words <- (d %>%
+  distinct(Child_Word))$Child_Word
+
+Experimenter_words <- (d %>%
+  distinct(Experimenter_Word))$Experimenter_Word
+
+model_cue <- model[[which(rownames(model) %in% Experimenter_words), average=FALSE]]
+
+model_target <- model[[which(rownames(model) %in% Child_words), average=FALSE]]
+
+cosSim <- cosineSimilarity(model_cue, model_target)
+
+
+pairs <- na.omit(data.frame(as.table(cosSim))) %>%
+  rename(Experimenter_Word=Var1,
+         Child_Word=Var2,
+         CosSim=Freq)
+
+d_assoc_sem <- d_assoc_phon %>%
+  left_join(pairs)
+
+d_assoc_all <- d_assoc_sem
+
+```
+
+
+Here we reproduce the development of paradigmatic vs. syntagmatic as in Erica's previous research
+
+```{r}
+d_age <- d %>%
+  group_by(Age2) %>%
+  summarise(mean = mean(Para),
+            sd = sd(Para),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se)
+  
+#d_age$Age2 = factor(d_age$Age2, levels = c("Younger", "Older", "Adult"))`
+
+ggplot(d_age, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1)) 
+
+```
+
+Here compute the entropy with age 
+
+```{r}
+#Here do the entropy measure 
+```
+
+
+Here the development in terms of reliance on phonetic distance 
+```{r}
+
+#We study only associations for which answer is available across development (for Younger, Older and Adults)
+#We also eliminate words where children just repeat the cue (e.g., apple -> apple), that with edit distance =0
+word_excl <- (d_assoc_all %>%
+  filter(is.na(Child_Word_phon) | is.na(Child_Word) | Phon_dist =="0") %>%
+  #filter(is.na(Child_Word_phon) | Phon_dist =="0") %>%
+  distinct(Experimenter_Word))$Experimenter_Word
+
+##Here average the edit distance 
+phonDist_all <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2) %>%
+  summarise(mean = mean(Phon_dist),
+            sd = sd(Phon_dist),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+phonDist_all$Age2 = factor(phonDist_all$Age2, levels = c("Younger", "Older", "Adult"))
+
+ggplot(phonDist_all, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1))
+ 
+
+##Here narrow down on the small distances 
+
+##Histogram
+phonDist_small <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2, Phon_dist) %>%
+  summarise(n0 = n()) 
+
+##ALL
+ggplot(phonDist_small, aes(x=Phon_dist, y=n0))+
+  geom_col()+
+  facet_grid(. ~ Age2)
+
+##Only minimal pairs
+ggplot(subset(phonDist_small, Phon_dist==1), aes(x=Age2, y=n0))+
+  geom_col()
+```
+
+Correlation between phonetic and semantic distance
+```{r}
+
+##Here show the correlation between phonetinc and semantic distance 
+phon_sem_dist <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) #%>%
+  #group_by(Age2, Phon_dist) %>%
+  #summarise(semDsit = mean(CosSim)) 
+
+#ggplot(subset(phon_sem_dist, Phon_dist < 5), aes(x=Phon_dist, y=CosSim))+
+ggplot(phon_sem_dist, aes(x=Phon_dist, y=CosSim))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  #geom_smooth()+
+  facet_grid(. ~ Age2)
+
+
+fit <- lm(CosSim~Phon_dist, data= subset(phon_sem_dist, Age2=='Older'))
+summary(fit)
+
+
+
+```
+
+Now study the semantic distance 
+```{r}
+
+
+word_excl <- (d_assoc_all %>%
+  filter(is.na(CosSim) | Phon_dist =="0") %>%
+  #filter(is.na(Child_Word_phon) | Phon_dist =="0") %>%
+  distinct(Experimenter_Word))$Experimenter_Word
+
+
+sem_all <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2) %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+sem_all$Age2 = factor(sem_all$Age2, levels = c("Younger", "Older", "Adult"))
+
+ggplot(sem_all, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1)) 
+
+
+##Break by part of speach 
+
+sem_pos <- d_assoc_all %>%
+  filter(!(Experimenter_Word %in% word_excl)) %>%
+  group_by(Age2, partofspeech) %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+sem_pos$Age2 = factor(sem_pos$Age2, levels = c("Younger", "Older", "Adult"))
+
+ggplot(sem_pos, aes(x=Age2, y=mean))+
+  geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = .1))+
+  facet_grid(. ~ partofspeech)
+
+
+
+
+```
+
