@@ -1,4 +1,7 @@
 "0"," library(purrr)"
+"2","There were 50 or more warnings (use warnings() to see the first 50)"
+"2","
+"
 "0","  library(readr)"
 "0","  library(ggplot2)"
 "0","  library(langcog)"

@@ -40,6 +40,75 @@ dict <- read_delim("data/cmu_dict.txt", delim = ",")
 
 ```
 
+example
+
+```{r}
+
+ g6b_300 <- scan(file = "derived/glove.6B/glove.6B.300d.txt", what="", sep="\n")
+
+```
+
+```{r}
+
+###Function  written by Taylor Van Anne
+proc_pretrained_vec <- function(p_vec) {
+
+
+        # initialize space for values and the names of each word in vocab
+        vals <- vector(mode = "list", length(p_vec))
+        names <- character(length(p_vec))
+
+        # loop through to gather values and names of each word
+        for(i in 1:length(p_vec)) {
+            if(i %% 1000 == 0) {print(i)}
+            this_vec <- p_vec[i]
+            this_vec_unlisted <- unlist(strsplit(this_vec, " "))
+            this_vec_values <- as.numeric(this_vec_unlisted[-1])  # this needs testing, does it become numeric?
+            this_vec_name <- this_vec_unlisted[1]
+
+            vals[[i]] <- this_vec_values
+            names[[i]] <- this_vec_name
+        }
+
+        # convert lists to data.frame and attach the names
+        glove <- data.frame(vals)
+        names(glove) <- names
+
+        return(glove)
+}
+
+
+glove.300 <- proc_pretrained_vec(g6b_300)
+
+ find_sim_wvs <- function(this_wv, all_wvs, top_n_res=40) {
+        # this_wv will be a numeric vector; all_wvs will be a data.frame with words as columns and dimesions as rows
+        require(text2vec)
+        this_wv_mat <- matrix(this_wv, ncol=length(this_wv), nrow=1)
+        all_wvs_mat <- as.matrix(all_wvs)
+        
+        if(dim(this_wv_mat)[[2]] != dim(all_wvs_mat)[[2]]) {
+            print("switching dimensions on the all_wvs_matrix")
+            all_wvs_mat <- t(all_wvs_mat)
+        }
+        
+        cos_sim = sim2(x=all_wvs_mat, y=this_wv_mat, method="cosine", norm="l2")
+        sorted_cos_sim <- sort(cos_sim[,1], decreasing = T) 
+        return(head(sorted_cos_sim, top_n_res))
+                
+    }
+
+ this_word_vector <- glove.300[['king']] - glove.300[['man']] + glove.300[['woman']] 
+ find_sim_wvs(glove.300[['king']], glove.300, top_n_res=5)
+ 
+ 
+ example <- t(glove.300)
+ #Select from the matrix only the words that exist in our database
+ 
+```
+
+
+
+
 This function is used to recode symbols in cmu phonetic dictionary: we want each symbol to be unique character ( the right format for the Edit distance) 
 ```{r}
 
@@ -200,7 +269,6 @@ d_phon <- d %>%
 
 ```
 
-
 Include semantic distance from Childes to the dataframe
 ```{r}
 #Generate the model and store it in "derived"
@@ -211,35 +279,79 @@ Include semantic distance from Childes to the dataframe
 #                            output="corpus.bin", threads = 4,
 #                             vectors = 100, window=20, cbow=1, min_count = 10, force= TRUE)
 
-#Read the model 
-model = read.vectors("derived/corpus.bin")
+#Read the model
 
-model_google = read.vectors("derived/freebase.bin")
+model_cds = read.vectors("derived/corpus.bin")
+
+#model_google = read.vectors("derived/freebase.bin")
+
+model <- as.VectorSpaceModel(example)
+
 cue_words <- (d %>%
-  distinct(Child_Word))$Child_Word
-
-target_words <- (d %>%
   distinct(Experimenter_Word))$Experimenter_Word
 
+target_words <- (d %>%
+  distinct(Child_Word))$Child_Word
+
+#Glove vectors
 model_cue <- model[[which(rownames(model) %in% cue_words), average=FALSE]]
-
 model_target <- model[[which(rownames(model) %in% target_words), average=FALSE]]
-
 cosSim <- cosineSimilarity(model_cue, model_target)
-
 
 pairs <- na.omit(data.frame(as.table(cosSim))) %>%
   rename(Experimenter_Word=Var1,
          Child_Word=Var2,
          CosSim=Freq)
 
-d_phon_sem <- d_phon %>%
-  left_join(pairs)
+#feather::write_feather(pairs, "derived/CosSim_glov.feather")
 
-#Herer select the variables that are useful to later analyses
+pairs <- feather::read_feather("derived/CosSim_glov.feather")
+
+#CDS
+model_cue_cds <- model_cds[[which(rownames(model_cds) %in% cue_words), average=FALSE]]
+model_target_cds <- model_cds[[which(rownames(model_cds) %in% target_words), average=FALSE]]
+cosSim_cds <- cosineSimilarity(model_cue_cds, model_target_cds)
+
+pairs_cds <- na.omit(data.frame(as.table(cosSim_cds))) %>%
+  rename(Experimenter_Word=Var1,
+         Child_Word=Var2,
+         CosSim_cds=Freq)
+
+#feather::write_feather(pairs_cds, "derived/CosSim_cds.feather")
+
+pairs_cds <- feather::read_feather("derived/CosSim_cds.feather")
+
+
+d_phon_sem <- d_phon %>%
+  left_join(pairs) %>%
+  left_join(pairs_cds)
+
+#Basline (chance) semantic distance
+pair_chance <- pairs %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+#Baseline (chance) semantic distance CDS
+pair_chance_cds <- pairs_cds %>%
+  summarise(mean = mean(CosSim_cds),
+            sd = sd(CosSim_cds),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se)
+
+
+
+#Here select the variables that are useful to later analyses
 
 d_all <- d_phon_sem %>%
-  select(Subject, partofspeech, Experimenter_Word, Child_Word,  Age, Age2, cue_phon, target_phon,  cue_code, target_code, phon_dist, CosSim) %>%
+  select(Subject, partofspeech, Experimenter_Word, Child_Word,  Age, Age2, Age3, cue_phon, target_phon,  cue_code, target_code, phon_dist, CosSim, CosSim_cds) %>%
   dplyr::rename(cue = Experimenter_Word, 
                 target = Child_Word) 
 
@@ -292,7 +404,7 @@ SemDist <- d_all %>%
   mutate(se = sd / sqrt(n0),
          lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
          upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
-  select(-sd, -n0, -se)
+  select(-sd, -n0, -se) 
   
 
 SemDist$Age3 = factor(SemDist$Age3, levels = c("Young", "Adult"))
@@ -357,10 +469,11 @@ miniDist <- d_all %>%
   
 miniDist$phon_dist = factor(miniDist$phon_dist, levels = c("dist1", "dist2", "dist3", "dist4", "dist5", "dist6", "dist7", "dist8", "dist9", "dist10", "dist11"))
 
-ggplot(miniDist, aes(x=phon_dist, y=mean, col=Age3))+
+ggplot(miniDist, aes(x=phon_dist, y=mean, fill=Age3))+
   geom_line(aes(x=phon_dist, y=mean))+
+  geom_col(position = "dodge")+
   geom_pointrange(aes(ymin = lower, ymax = upper), 
-                  position = position_dodge(width = .1)) 
+                  position = position_dodge(width = 1), size=0.3) 
 
 
 ```
@@ -376,20 +489,21 @@ Sem_histo <- d_all %>%
          phon_dist != 0 #We also eliminate words where children just repeat the cue (e.g., apple -> apple)
          )
 
-ggplot(Sem_histo,  aes(CosSim, fill=Age3))+geom_density(aes(y=..scaled..), alpha=0.2, adjust= 2) + theme(aspect.ratio = 0.7, axis.text=element_text(size=7, angle = 45)) +xlab("Cosine similarity") +ylab("Count")
+ggplot(Sem_histo,  aes(CosSim, fill=Age3))+geom_density(aes(y=..scaled..), alpha=0.2, adjust= 1.5) + theme(aspect.ratio = 0.7, axis.text=element_text(size=7, angle = 45)) +xlab("Cosine similarity") +ylab("Count")
 
 
+```
+
+Correlation between phonetic and semantic distance 
+Here again we have substantially less data because of the missing data from semantic distance. We need Glov vectors to move forward 
+```{r}
 ##Correlation semantic phonology
 phon_sem <- d_all %>%
    filter(!is.na(CosSim),
           !is.na(phon_dist),
            phon_dist != 0 
          )
-```
 
-Correlation between phonetic and semantic distance 
-Here again we have substantially less data because of the missing data from semantic distance. We need Glov vectors to move forward 
-```{r}
 ggplot(phon_sem, aes(x=phon_dist, y=CosSim))+
 #ggplot(phon_sem_dist, aes(x=Phon_dist, y=CosSim))+
   geom_point()+
@@ -397,6 +511,125 @@ ggplot(phon_sem, aes(x=phon_dist, y=CosSim))+
   #geom_smooth()+
   facet_grid(. ~ Age3)
 
+#Correlatin test Adults (negative correlation)
+adult <- subset(phon_sem, Age3=='Adult')
+cor.test(adult$phon_dist, adult$CosSim)
+
+#Correlatin test Children (positive correlation!!!)
+children <- subset(phon_sem, Age3=='Young')
+cor.test(children$phon_dist, children$CosSim)
+
 ```
 
+
+
+```{r}
+#Analysis: compute the mean (mu), and the standard deviation (sd) for all values of phonetic distances,  then compute the , z-score of 
+phon_sem_ave <- d_all %>%
+   filter(!is.na(CosSim),
+          !is.na(phon_dist),
+           phon_dist != 0 
+         ) %>%
+  group_by(Age3,phon_dist) %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se) 
+
+
+  
+ggplot(phon_sem_ave, aes(x=phon_dist, y=mean, col=Age3))+
+geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = 0.1), size=0.3) +
+  ylim(c(0,1))#+
+  #facet_grid(. ~ Age3)
+
+
+```
+
+```{r}
+#Analysis: compute the mean (mu), and the standard deviation (sd) for all values of phonetic distances,  then compute the , z-score of 
+phon_sem_ave <- d_all %>%
+   filter(!is.na(CosSim_cds),
+          !is.na(phon_dist),
+           phon_dist != 0 
+         ) %>%
+  group_by(Age3,phon_dist) %>%
+  summarise(mean = mean(CosSim_cds),
+            sd = sd(CosSim_cds),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se) 
+
+
+  
+ggplot(phon_sem_ave, aes(x=phon_dist, y=mean, col=Age3))+
+geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = 0.1), size=0.3) +
+  ylim(c(0,1))#+
+  #facet_grid(. ~ Age3)
+
+
+```
+
+```{r}
+#Analysis: compute the mean (mu), and the standard deviation (sd) for all values of phonetic distances,  then compute the , z-score of 
+phon_sem_ave <- d_all %>%
+   filter(!is.na(CosSim),
+          !is.na(phon_dist),
+           phon_dist != 0 
+         ) %>%
+  mutate(minimal = ifelse(phon_dist==1,"Minimal","noMinial")) %>%
+  group_by(Age3, minimal) %>%
+  summarise(mean = mean(CosSim),
+            sd = sd(CosSim),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se) 
+
+
+  
+ggplot(phon_sem_ave, aes(x=minimal, y=mean))+
+geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = 0.1), size=0.3) +
+  ylim(c(0,1))+
+  facet_grid(. ~ Age3)
+
+
+```
+```{r}
+#Analysis: compute the mean (mu), and the standard deviation (sd) for all values of phonetic distances,  then compute the , z-score of 
+
+phon_sem_ave <- d_all %>%
+   filter(!is.na(CosSim_cds),
+          !is.na(phon_dist),
+           phon_dist != 0 
+         ) %>%
+  mutate(minimal = ifelse(phon_dist==1,"Minimal","noMinial")) %>%
+  group_by(Age3, minimal) %>%
+  summarise(mean = mean(CosSim_cds),
+            sd = sd(CosSim_cds),
+                   n0 = n()) %>%
+  mutate(se = sd / sqrt(n0),
+         lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
+         upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
+  select(-sd, -n0, -se) 
+
+
+  
+ggplot(phon_sem_ave, aes(x=minimal, y=mean))+
+geom_pointrange(aes(ymin = lower, ymax = upper), 
+                  position = position_dodge(width = 0.1), size=0.3) +
+  ylim(c(0,1))+
+  facet_grid(. ~ Age3)
+
+
+```
 
