@@ -1,7 +1,4 @@
 "0"," library(purrr)"
-"2","There were 50 or more warnings (use warnings() to see the first 50)"
-"2","
-"
 "0","  library(readr)"
 "0","  library(ggplot2)"
 "0","  library(langcog)"
@@ -106,5 +103,26 @@ Attaching package: ‘magrittr’
 "2","The following object is masked from ‘package:purrr’:
 
     set_names
+
+"
+"0","  library(lme4)"
+"2","Loading required package: Matrix
+"
+"2","
+Attaching package: ‘Matrix’
+
+"
+"2","The following object is masked from ‘package:tidyr’:
+
+    expand
+
+"
+"2","
+Attaching package: ‘lme4’
+
+"
+"2","The following object is masked from ‘package:nlme’:
+
+    lmList
 
 "
