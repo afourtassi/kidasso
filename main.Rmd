@@ -9,15 +9,15 @@ output: html_document
  library(purrr)
   library(readr)
   library(ggplot2)
-  library(langcog)
+  #library(langcog)
   library(boot)
   library(dplyr)
   library(tidyr)
+  library(ggthemes)
   library(wordbankr)
   library(directlabels)
   library(stringr)
   library(lmtest)
-  library(rwebppl)
   library(jsonlite)
   library(nlme)
   library(feather)
@@ -27,6 +27,8 @@ output: html_document
   library(wordVectors)
   library(magrittr)
   library(lme4)
+  library(lmerTest)
+  library(stargazer)
 ```
 
 
@@ -38,7 +40,10 @@ d <- read_delim("data/associations.txt", delim = "\t") %>%
 
 dict <- read_delim("data/cmu_dict.txt", delim = ",") 
 
+ 
+
 ```
+
 
 
 ```{r, include=FALSE, echo=FALSE}
@@ -245,7 +250,15 @@ d_entropy$Age2 = factor(d_entropy$Age2, levels = c("Younger", "Older", "Adult"))
 ggplot(d_entropy, aes(x=Age2, y=mean))+
   geom_pointrange(aes(ymin = lower, ymax = upper), 
                   position = position_dodge(width = .1))+
-  ylab('mean normalized entropy')
+  geom_line(aes(group = 1))+
+  theme_few() +
+  theme( 
+        axis.text=element_text(size=14, angle = 0),
+        strip.text.x = element_text(size=10),
+        strip.text.y = element_text(size=10),
+        axis.title=element_text(size=16),
+        aspect.ratio = 0.7) +
+  ylab('Mean Normalized Entropy') + xlab("Age group") 
   #+facet_grid( . ~ partofspeech)
 
 # Do some statistical tests?
@@ -310,7 +323,14 @@ Targets <- d %>%
 
 d_phon <- feather::read_feather("derived/d_phon.feather") %>%
   dplyr::rename(cue = Experimenter_Word, 
-                target = Child_Word) 
+                target = Child_Word)  %>%
+  mutate(cue_l = str_length(cue_code),
+         target_l = str_length(target_code)) %>%
+  mutate(len_max = if_else(cue_l > target_l, cue_l, target_l)) %>%
+  mutate(edit_N = phon_dist/len_max) %>%
+  mutate(minimal = if_else(phon_dist > 1, 1,-1))
+
+
 
 ```
 
@@ -323,7 +343,7 @@ PhonDist <- d_phon %>%
          phon_dist != 0 #We  eliminate words where children just repeat the cue (e.g., apple -> apple)
          ) %>%
   group_by(Age2) %>%
-  summarise(mean = mean(phon_dist),
+  summarise(mean = mean(minimal),
             sd = sd(phon_dist),
                    n0 = n()) %>%
   mutate(se = sd / sqrt(n0),
@@ -513,7 +533,7 @@ pair_chance_cds <- pairs_cds %>%
 #Here select the variables that are useful to later analyses
 
 d_all <- d_phon_sem %>%
-  select(Subject, partofspeech, cue, target,  Age, Age2, Age3, cue_phon, target_phon,  cue_code, target_code, phon_dist, CosSim, CosSim_cds) 
+  select(Subject, partofspeech, cue, target,  Age, Age2, Age3, cue_phon, target_phon,  cue_code, target_code, phon_dist, CosSim, CosSim_cds, target_l, edit_N, minimal, LogFreq) 
 
 ```
 
@@ -521,7 +541,7 @@ d_all <- d_phon_sem %>%
 
 ```{r echo=FALSE}
 
-SemDist <- d_all %>%
+SemDist_wiki <- d_all %>%
   filter(!is.na(CosSim),
          phon_dist != 0 #We also eliminate words where children just repeat the cue (e.g., apple -> apple)
          ) %>%
@@ -532,13 +552,14 @@ SemDist <- d_all %>%
   mutate(se = sd / sqrt(n0),
          lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
          upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
-  select(-sd, -n0, -se) 
-  
+  select(-sd, -n0, -se) %>%
+  bind_rows(data.frame(Age2 = c('chance'), mean = c(as.numeric(pair_chance$mean)), lower = c(as.numeric(pair_chance$lower)), upper = c(as.numeric(pair_chance$upper)))) %>%
+  mutate(Corpus = 'Freebase')
 
 #SemDist$Age3 = factor(SemDist$Age3, levels = c("Young", "Adult"))
-SemDist$Age2 = factor(SemDist$Age2, levels = c("Younger", "Older", "Adult"))
+SemDist_wiki$Age2 = factor(SemDist_wiki$Age2, levels = c("Younger", "Older", "Adult", "chance"))
 
-ggplot(SemDist, aes(x=Age2, y=mean))+
+ggplot(SemDist_wiki, aes(x=Age2, y=mean))+
   geom_pointrange(aes(ymin = lower, ymax = upper), 
                   position = position_dodge(width = .1))+
   #geom_hline(yintercept = pair_chance$mean) + 
@@ -552,7 +573,7 @@ ggplot(SemDist, aes(x=Age2, y=mean))+
 
 ```{r echo=FALSE}
 
-SemDist <- d_all %>%
+SemDist_cds <- d_all %>%
   filter(!is.na(CosSim_cds),
          phon_dist != 0 #We also eliminate words where children just repeat the cue (e.g., apple -> apple)
          ) %>%
@@ -563,16 +584,35 @@ SemDist <- d_all %>%
   mutate(se = sd / sqrt(n0),
          lower = mean - qt(1 - (0.05 / 2), n0 - 1) * se,
          upper = mean + qt(1 - (0.05 / 2), n0 - 1) * se) %>%
-  select(-sd, -n0, -se) 
-  
+  select(-sd, -n0, -se)  %>%
+  bind_rows(data.frame(Age2 = c('chance'), mean = c(as.numeric(pair_chance_cds$mean)), lower = c(as.numeric(pair_chance_cds$lower)), upper = c(as.numeric(pair_chance_cds$upper)))) %>%
+  mutate(Corpus = 'CHILDES') 
+
+
+SemDist_all <- SemDist_cds %>%
+  bind_rows(SemDist_wiki)
+
 
 #SemDist$Age3 = factor(SemDist$Age3, levels = c("Young", "Adult"))
-SemDist$Age2 = factor(SemDist$Age2, levels = c("Younger", "Older", "Adult"))
+SemDist_all$Age2 = factor(SemDist_all$Age2, levels = c("Younger", "Older", "Adult", "chance"))
 
-ggplot(SemDist, aes(x=Age2, y=mean))+
+ggplot(subset(SemDist_all, Age2 != 'chance'), aes(x=Age2, y=mean, col = Corpus))+
   geom_pointrange(aes(ymin = lower, ymax = upper), 
                   position = position_dodge(width = .1))+
-  ylab('mean semantic distance')
+  geom_line(data= subset(SemDist_all, Age2 != 'chance'), aes(group = Corpus ))+
+  
+  geom_hline(data = subset(SemDist_all, Age2 == 'chance'), linetype = 2, aes(yintercept = mean, col=Corpus)) +
+  #geom_hline(yintercept = pair_chance$mean, linetype=2) + 
+theme_few() +
+  theme( 
+        axis.text=element_text(size=14, angle = 0),
+        strip.text.x = element_text(size=10),
+        strip.text.y = element_text(size=10),
+        axis.title=element_text(size=16),
+        aspect.ratio = 0.7,
+        legend.position="bottom") +
+  ylab('Mean Smantic Similarity') + xlab("Age group") 
+  
   
   #+ facet_grid( . ~ partofspeech) 
 
@@ -805,5 +845,76 @@ hello <- d_all %>%
            phon_dist == 8 
          )
   
+```
+
+Model
+```{r}
+
+
+#the associations have a values: co-occurrence similarity, phonetic similarity  
+#Predict associatins; how
+
+#First make norms: compute the percetage of each provided word by 
+
+#frequency 
+freq <- read_csv("data/log_freq.csv") %>%
+  rename(target = uni_lemma) 
+
+d_measures <- d_all %>%
+  distinct(cue, target, CosSim_cds, target_l, edit_N, minimal) %>%
+  left_join(freq)
+  
+d_norms <- d_all %>%
+  group_by(cue, Age2, target) %>%
+  summarise(n=n()) %>%
+  mutate(percent = 100*n/sum(n)) %>%
+  #filter(n > 1) %>%
+  #mutate(Age = if_else(Age2 == "Adult", 1, if_else(Age2 == "Older", 0,-1))) %>%
+  mutate(Age = if_else(Age2 == "Older", 1, -1)) %>%
+  filter(Age2 != "Adult") %>%
+  left_join(d_measures)  %>%
+  mutate_at(c('CosSim_cds', 'edit_N', 'target_l','freq'), funs(as.numeric(scale(.)))) 
+
+
+#ggplot(d_phon_sem, aes(x=ResponseCat, y=CosSim_cds))+
+#geom_boxplot()
+
+
+
+```
+
+```{r}
+
+model <- lmer(formula = percent ~ (CosSim_cds + freq + target_l + minimal )*Age  + (1 | cue) , 
+             data = d_norms)
+
+summary(model)
+
+mytable <- stargazer(model, keep.stat="n",
+          omit.stat = c( "n"),
+          
+          title            = "Regression predicting the reponse probability in word associations",
+          dep.var.labels.include = FALSE,
+          #style = "qje",
+          model.numbers          = FALSE,
+          intercept.bottom = FALSE,
+          star.cutoffs = c(0.05, 0.01, 0.001),
+          )#,
+          #column.labels = c("Animals", "Furniture", "Toys", "Food", "Clothing", "Vehicles")
+          )
+
+class(model) <- "lmerMod"
+
+mytable <- stargazer(model, 
+                     keep.stat="n",
+                     omit.stat = c( "n"),
+                     dep.var.labels.include = FALSE,
+                     model.numbers          = FALSE,
+                     intercept.bottom = FALSE,
+                     star.cutoffs = c(0.05, 0.01, 0.001),
+                     ci=TRUE, ci.level=0.95, single.row=TRUE,
+                     column.labels = c("Predictors")
+                     )
+
 ```
 
